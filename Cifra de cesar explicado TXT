@@ -1,0 +1,223 @@
+/* ======================================================================
+ * Atividade 02 - Cifra de Cesar com sequencias numericas
+ * Disciplina: Algoritmos e Pensamento Computacional
+ * ======================================================================
+ *
+ * INTEGRANTES (preencha abaixo):
+ *
+ *   Nome 1: Rafaella Lopes Mendonça Tolentino   |   RGM: 48033863
+ *
+ *   Nome 2: Luiz Paulo Alves                    |   RGM: 47778929
+ *
+ *   Nome 3: David Mota Marques                  |   RGM: 1747753251
+ *
+ *   Nome 4: ______________________________________________
+ *
+ *   Turma: ______________    Data: 01/10/2026
+ *
+ * ======================================================================
+ * COMO O PROGRAMA FUNCIONA
+ *
+ * Camada 1: Cifra de Cesar (SHIFT fixo, igual para todas as letras).
+ * Camada 2: deslocamento dinamico, vindo de uma sequencia numerica
+ *           (PA, PG, Fibonacci ou Primos), diferente para cada letra.
+ *
+ * Deslocamento total da letra i = SHIFT + sequencia[i]
+ *
+ * Exemplo: palavra "abc", SHIFT = 3, sequencia = Primos (2, 3, 5)
+ *   letra 'a' -> desloca 3 + 2 = 5 posicoes -> 'f'
+ *   letra 'b' -> desloca 3 + 3 = 6 posicoes -> 'h'
+ *   letra 'c' -> desloca 3 + 5 = 8 posicoes -> 'k'
+ *   Resultado: "fhk"
+ * ====================================================================== */
+
+
+/* ---------------------- BIBLIOTECAS (#include) ---------------------- */
+
+#include <stdio.h>   /* Biblioteca de entrada/saida: printf, scanf, fopen, fprintf, fclose, snprintf */
+#include <string.h>  /* Biblioteca de textos (strings): usamos strlen para medir o tamanho da palavra */
+#include <ctype.h>   /* Biblioteca de caracteres: usamos isalpha (e letra?) e tolower (minuscula) */
+#include <time.h>    /* Biblioteca de data e hora: usada para gravar o horario no arquivo de log */
+
+#define MAX_LETRAS 15  /* Define uma constante: a palavra pode ter no maximo 15 letras */
+
+
+/* ====================== SEQUENCIAS NUMERICAS ====================== */
+
+/* Funcao que diz se um numero e primo. Retorna 1 se for primo e 0 se nao for.
+   "static" significa que so pode ser usada dentro deste arquivo. */
+static int eh_primo(long n) {
+    if (n < 2) return 0;                  /* Numeros menores que 2 (0 e 1) nao sao primos */
+    for (long d = 2; d * d <= n; d++)     /* Testa divisores d de 2 ate a raiz quadrada de n (d*d <= n) */
+        if (n % d == 0) return 0;         /* Se n e divisivel por d (resto 0), tem divisor: NAO e primo */
+    return 1;                             /* Nenhum divisor encontrado: e primo */
+}
+
+/* Funcao que preenche o vetor seq[0..n-1] com a sequencia escolhida.
+   tipo  = 1 (PA), 2 (PG), 3 (Fibonacci) ou 4 (Primos)
+   n     = quantos termos gerar (um para cada letra da palavra)
+   a1    = primeiro termo (usado so em PA e PG)
+   razao = razao da sequencia (usada so em PA e PG)
+   seq[] = vetor onde os termos serao guardados */
+void gerar_sequencia(int tipo, int n, long a1, long razao, long seq[]) {
+    switch (tipo) {                       /* Escolhe o bloco de codigo de acordo com o tipo */
+
+    case 1: /* PA (Progressao Aritmetica): an = a1 + (n-1)*r */
+        for (int i = 0; i < n; i++)       /* Repete para cada posicao i de 0 ate n-1 */
+            seq[i] = a1 + i * razao;      /* Termo i = primeiro termo + i vezes a razao */
+        break;                            /* Sai do switch (evita executar o proximo case) */
+
+    case 2: /* PG (Progressao Geometrica): an = a1 * q^(n-1) */
+        seq[0] = a1;                      /* O primeiro termo e o proprio a1 */
+        for (int i = 1; i < n; i++)       /* Calcula os demais termos a partir do segundo */
+            seq[i] = (seq[i - 1] * razao) % 26;  /* Termo = termo anterior * razao; o "% 26" mantem o numero pequeno (evita overflow) */
+        break;                            /* Sai do switch */
+
+    case 3: /* Fibonacci: 1, 1, 2, 3, 5, 8, 13... */
+        for (int i = 0; i < n; i++)       /* Repete para cada posicao */
+            seq[i] = (i < 2) ? 1          /* Os dois primeiros termos valem 1 */
+                     : (seq[i - 1] + seq[i - 2]) % 26;  /* Os demais: soma dos dois anteriores (com % 26) */
+        break;                            /* Sai do switch */
+
+    case 4: { /* Primos: 2, 3, 5, 7, 11... */
+        long p = 2;                       /* p e o numero candidato; comeca em 2 (primeiro primo) */
+        for (int i = 0; i < n; ) {        /* Repete ate ter n primos guardados (i so aumenta ao achar um) */
+            if (eh_primo(p)) seq[i++] = p;/* Se p e primo, guarda em seq[i] e passa para a proxima posicao */
+            p++;                          /* Testa o proximo numero */
+        }
+        break;                            /* Sai do switch */
+    }
+    }
+}
+
+/* Funcao que devolve o nome da sequencia (usada para escrever no log) */
+const char *nome_sequencia(int tipo) {
+    switch (tipo) {
+    case 1: return "PA";                  /* tipo 1 -> "PA" */
+    case 2: return "PG";                  /* tipo 2 -> "PG" */
+    case 3: return "Fibonacci";           /* tipo 3 -> "Fibonacci" */
+    case 4: return "Primos";              /* tipo 4 -> "Primos" */
+    }
+    return "?";                           /* Tipo desconhecido */
+}
+
+
+/* ========================== CRIPTOGRAFIA ========================== */
+
+/* Funcao que criptografa ou descriptografa a palavra.
+   entrada = palavra original (so letras minusculas)
+   saida   = onde o resultado sera guardado
+   shift   = deslocamento fixo da Cifra de Cesar
+   seq[]   = sequencia numerica (deslocamento extra de cada letra)
+   sentido = +1 para criptografar (anda para frente), -1 para descriptografar (volta) */
+void processar(const char *entrada, char *saida, int shift, const long seq[], int sentido) {
+    int n = (int)strlen(entrada);                 /* n = quantidade de letras da palavra */
+    for (int i = 0; i < n; i++) {                 /* Percorre cada letra, da posicao 0 ate n-1 */
+        int desloc = (int)((shift + seq[i]) % 26);/* Deslocamento total da letra: SHIFT + sequencia[i]; "% 26" porque o alfabeto tem 26 letras */
+        int pos = entrada[i] - 'a';               /* Converte a letra em numero: 'a'=0, 'b'=1, ... 'z'=25 */
+        pos = ((pos + sentido * desloc) % 26 + 26) % 26;  /* Aplica o deslocamento (+ ou -); o "+ 26) % 26" garante resultado entre 0 e 25, mesmo se der negativo */
+        saida[i] = (char)('a' + pos);             /* Converte o numero de volta para letra e guarda na saida */
+    }
+    saida[n] = '\0';                              /* Coloca o marcador de fim de texto ('\0') para fechar a string */
+}
+
+
+/* ======================== ENTRADA E LOG ======================== */
+
+/* Funcao que verifica se a palavra digitada e valida. Retorna 1 se sim, 0 se nao. */
+int palavra_valida(const char *p) {
+    int n = (int)strlen(p);                       /* n = tamanho da palavra */
+    if (n == 0 || n > MAX_LETRAS) return 0;       /* Invalida se estiver vazia ou tiver mais de 15 letras */
+    for (int i = 0; i < n; i++)                   /* Percorre cada caractere */
+        if (!isalpha((unsigned char)p[i])) return 0;  /* Se algum caractere NAO for letra (numero, espaco, simbolo), e invalida */
+    return 1;                                     /* Passou em todos os testes: e valida */
+}
+
+/* Funcao que grava uma mensagem, com data e hora, no arquivo de log */
+void registrar_log(const char *msg) {
+    FILE *f = fopen("log_execucao.txt", "a");     /* Abre o arquivo de log no modo "a" (append): acrescenta no final sem apagar o que ja existe */
+    if (!f) return;                               /* Se nao conseguiu abrir o arquivo, sai da funcao sem fazer nada */
+    time_t t = time(NULL);                        /* Pega a data/hora atual do computador */
+    char hora[32];                                /* Texto onde a data/hora formatada sera guardada */
+    strftime(hora, sizeof hora, "%Y-%m-%d %H:%M:%S", localtime(&t));  /* Formata como ano-mes-dia hora:min:seg */
+    fprintf(f, "[%s] %s\n", hora, msg);           /* Escreve no arquivo: [data hora] mensagem */
+    fclose(f);                                    /* Fecha o arquivo (salva o que foi escrito) */
+}
+
+
+/* ======================== PROGRAMA PRINCIPAL ======================== */
+
+int main(void) {
+    char palavra[64], resultado[64], msg[256];    /* palavra = o que o usuario digita; resultado = palavra cifrada/decifrada; msg = texto do log */
+    int opcao, shift, tipo;                       /* opcao = escolha do menu; shift = deslocamento fixo; tipo = qual sequencia */
+    long a1 = 1, razao = 1, seq[MAX_LETRAS];      /* a1 e razao com valor inicial 1; seq = vetor da sequencia (ate 15 termos) */
+
+    do {                                          /* Repete o menu ate o usuario escolher sair */
+        printf("\n=== CIFRA DE CESAR + SEQUENCIAS ===\n");                          /* Mostra o titulo do menu */
+        printf("1 - Criptografar\n2 - Descriptografar\n0 - Sair\nOpcao: ");        /* Mostra as opcoes do menu */
+        if (scanf("%d", &opcao) != 1) break;      /* Le a opcao; se nao for numero valido, encerra o laco */
+        if (opcao == 0) break;                    /* Opcao 0: sai do laco e encerra o programa */
+        if (opcao != 1 && opcao != 2) {           /* Se nao for 1 nem 2... */
+            printf("Opcao invalida.\n");          /* ...avisa que a opcao e invalida */
+            continue;                             /* ...e volta ao inicio do menu */
+        }
+
+        printf("Palavra (ate %d letras, sem acentos): ", MAX_LETRAS);  /* Pede a palavra ao usuario */
+        scanf("%63s", palavra);                   /* Le a palavra (no maximo 63 caracteres, para nao estourar o vetor) */
+        if (!palavra_valida(palavra)) {           /* Se a palavra nao for valida... */
+            printf("Palavra invalida.\n");        /* ...avisa o usuario */
+            registrar_log("ERRO: palavra invalida");  /* ...registra o erro no arquivo de log */
+            continue;                             /* ...e volta ao menu */
+        }
+        for (int i = 0; palavra[i]; i++)          /* Percorre a palavra ate o fim do texto ('\0') */
+            palavra[i] = (char)tolower((unsigned char)palavra[i]);  /* Converte cada letra para minuscula (o algoritmo usa 'a' a 'z') */
+
+        printf("SHIFT: ");                        /* Pede o deslocamento fixo (Camada 1) */
+        scanf("%d", &shift);                      /* Le o valor do SHIFT */
+
+        printf("Sequencia: 1-PA  2-PG  3-Fibonacci  4-Primos\nTipo: ");  /* Mostra os tipos de sequencia (Camada 2) */
+        scanf("%d", &tipo);                       /* Le o tipo escolhido */
+        if (tipo < 1 || tipo > 4) {               /* Se o tipo estiver fora de 1 a 4... */
+            printf("Tipo invalido.\n");           /* ...avisa que e invalido */
+            continue;                             /* ...e volta ao menu */
+        }
+
+        if (tipo == 1) {                          /* Se for PA, precisa do primeiro termo e da razao */
+            printf("Primeiro termo (a1) e razao (r): ");  /* Pede os dois valores */
+            scanf("%ld %ld", &a1, &razao);        /* Le a1 e razao */
+        } else if (tipo == 2) {                   /* Se for PG, tambem precisa do primeiro termo e da razao */
+            printf("Primeiro termo (a1) e razao (q): ");  /* Pede os dois valores */
+            scanf("%ld %ld", &a1, &razao);        /* Le a1 e razao */
+        }                                         /* Fibonacci e Primos nao pedem nada extra */
+
+        int n = (int)strlen(palavra);             /* n = quantidade de letras da palavra */
+        gerar_sequencia(tipo, n, a1, razao, seq); /* Gera n termos da sequencia, um para cada letra */
+
+        printf("Sequencia usada:");               /* Texto de apresentacao */
+        for (int i = 0; i < n; i++)               /* Percorre os termos gerados */
+            printf(" %ld", seq[i]);               /* Imprime cada termo da sequencia */
+        printf("\n");                              /* Pula de linha */
+
+        processar(palavra, resultado, shift, seq, opcao == 1 ? +1 : -1);  /* Criptografa (+1) se opcao=1; descriptografa (-1) se opcao=2 */
+        printf("%s: %s\n",
+               opcao == 1 ? "Palavra criptografada" : "Palavra descriptografada",
+               resultado);                        /* Mostra o resultado na tela, com o texto certo para cada opcao */
+
+        if (opcao == 1) {                         /* Somente ao criptografar, salva o resultado em arquivo */
+            FILE *f = fopen("resultado_criptografia.txt", "w");  /* Abre o arquivo no modo "w" (write): apaga o conteudo anterior */
+            if (f) {                              /* Se o arquivo foi aberto com sucesso... */
+                fprintf(f, "Palavra codificada: %s | SHIFT: %d | Tipo: %d | Letras: %d\n",
+                        resultado, shift, tipo, n);  /* ...escreve a palavra codificada, o SHIFT, o tipo e a quantidade de letras */
+                fclose(f);                        /* ...e fecha o arquivo */
+            }
+        }
+
+        snprintf(msg, sizeof msg, "%s | entrada=%s saida=%s SHIFT=%d sequencia=%s letras=%d",
+                 opcao == 1 ? "CRIPTOGRAFOU" : "DESCRIPTOGRAFOU",
+                 palavra, resultado, shift, nome_sequencia(tipo), n);  /* Monta o texto do log (sem passar do tamanho de msg) */
+        registrar_log(msg);                       /* Grava o texto no arquivo log_execucao.txt */
+    } while (1);                                  /* Repete para sempre; so sai pelos "break" acima */
+
+    printf("Encerrado.\n");                       /* Mensagem final */
+    return 0;                                     /* Retorna 0: programa terminou sem erro */
+}
